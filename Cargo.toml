@@ -1,0 +1,13 @@
+[package]
+name = "gameboy"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+ctrlc = "3.4.1"
+
+[dependencies.sdl2]
+git = "https://github.com/Rust-SDL2/rust-sdl2"
+features = ["bundled", "raw-window-handle", "static-link"]

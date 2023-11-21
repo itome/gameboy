@@ -34,7 +34,7 @@ impl Cpu {
         Self: IO8<D> + IO8<S>,
     {
         step!((), {
-            0: if let Some(v) = self.read8(bus,src) {
+            0: if let Some(v) = self.read8(bus, src) {
                 VAL8.store(v, Relaxed);
                 go!(1);
             },
@@ -288,7 +288,7 @@ impl Cpu {
                 go!(1);
                 if self.cond(c) {
                     self.regs.pc = self.regs.pc.wrapping_add(v as i8 as u16);
-                    return;
+                    return; // cycle数はメモリアクセス数+1
                 }
             },
             1: {

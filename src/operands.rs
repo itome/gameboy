@@ -179,6 +179,8 @@ impl IO8<Indirect> for Cpu {
                        bus.read(addr)
                    }
                }, Relaxed);
+               go!(1);
+               return None;
            },
            1: {
                go!(0);

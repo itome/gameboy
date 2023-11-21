@@ -1,4 +1,4 @@
-use std::time;
+use std::{sync::mpsc::Receiver, time};
 
 use sdl2::{self};
 
@@ -27,15 +27,22 @@ impl GameBoy {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, shutdown_rx: Receiver<bool>) {
         let time = time::Instant::now();
         let mut elapsed = 0;
         loop {
+            match shutdown_rx.try_recv() {
+                Ok(shutdown) => {
+                    if shutdown {
+                        break;
+                    }
+                }
+                Err(_) => {}
+            }
             let e = time.elapsed().as_nanos();
             for _ in 0..(e - elapsed) / M_CYCLE_NANOS {
                 self.cpu.emulate_cycle(&mut self.peripherals);
                 if self.peripherals.ppu.emulate_cycle() {
-                    println!("drawing");
                     self.lcd.draw(self.peripherals.ppu.pixel_buffer());
                 }
 

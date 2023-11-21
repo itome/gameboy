@@ -25,9 +25,10 @@ const VBLANK_INT: u8 = 1 << 4;
 const HBLANK_INT: u8 = 1 << 3;
 const LYC_EQ_LY: u8 = 1 << 2;
 
+#[derive(Debug)]
 pub struct Ppu {
     mode: Mode,
-    lcdc: u8,
+    pub lcdc: u8,
     stat: u8,
     scy: u8,
     scx: u8,

@@ -93,7 +93,6 @@ impl IO8<Reg8> for Cpu {
         })
     }
 }
-
 impl IO16<Reg16> for Cpu {
     fn read16(&mut self, _: &Peripherals, src: Reg16) -> Option<u16> {
         Some(match src {
@@ -177,7 +176,7 @@ impl IO8<Indirect> for Cpu {
                        let addr = self.regs.hl();
                        self.regs.write_hl(addr.wrapping_add(1));
                        bus.read(addr)
-                   }
+                   },
                }, Relaxed);
                go!(1);
                return None;
@@ -206,7 +205,7 @@ impl IO8<Indirect> for Cpu {
                         let addr = self.regs.hl();
                         self.regs.write_hl(addr.wrapping_add(1));
                         bus.write(addr, val);
-                    }
+                    },
                 }
                 go!(1);
                 return None;

@@ -1,6 +1,6 @@
 use std::{sync::mpsc::Receiver, time};
 
-use sdl2::{self};
+use sdl2::{self, event::Event, Sdl};
 
 use crate::{bootrom::Bootrom, cpu::Cpu, lcd::LCD, peripherals::Peripherals};
 
@@ -12,6 +12,7 @@ pub struct GameBoy {
     cpu: Cpu,
     peripherals: Peripherals,
     lcd: LCD,
+    sdl: Sdl,
 }
 
 impl GameBoy {
@@ -24,20 +25,20 @@ impl GameBoy {
             cpu,
             peripherals,
             lcd,
+            sdl,
         }
     }
 
-    pub fn run(&mut self, shutdown_rx: Receiver<bool>) {
+    pub fn run(&mut self) {
+        let mut event_pump = self.sdl.event_pump().unwrap();
         let time = time::Instant::now();
         let mut elapsed = 0;
-        loop {
-            match shutdown_rx.try_recv() {
-                Ok(shutdown) => {
-                    if shutdown {
-                        break;
-                    }
+        'running: loop {
+            for event in event_pump.poll_iter() {
+                match event {
+                    Event::Quit { .. } => break 'running,
+                    _ => (),
                 }
-                Err(_) => {}
             }
             let e = time.elapsed().as_nanos();
             for _ in 0..(e - elapsed) / M_CYCLE_NANOS {

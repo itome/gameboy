@@ -1,4 +1,4 @@
-use std::{env, fs::File, io::Read, process::exit, sync::mpsc::channel};
+use std::{env, fs::File, io::Read, process::exit};
 
 use bootrom::Bootrom;
 use gameboy::GameBoy;
@@ -38,11 +38,8 @@ fn main() {
         exit(1);
     }
 
-    let (tx, rx) = channel::<bool>();
-    ctrlc::set_handler(move || tx.send(true).unwrap()).unwrap();
-
     let bootrom_raw = file2vec(&args[1]);
     let bootrom = Bootrom::new(bootrom_raw.into());
     let mut gameboy = GameBoy::new(bootrom);
-    gameboy.run(rx);
+    gameboy.run();
 }

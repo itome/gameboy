@@ -115,7 +115,7 @@ impl Cpu {
             },
             2: {
                 go!(0);
-                self.fetch(bus)
+                self.fetch(bus);
             },
         });
     }
@@ -147,6 +147,7 @@ impl Cpu {
         step!((), {
             0: if let Some(v) = self.read16(bus, src) {
                 VAL16.store(v.wrapping_sub(1), Relaxed);
+                go!(1);
             },
             1: if self.write16(bus, src, VAL16.load(Relaxed)).is_some() {
                 return go!(2);
@@ -179,11 +180,12 @@ impl Cpu {
         });
     }
 
-    pub fn bit<S: Copy>(&mut self, bus: &Peripherals, _: usize, src: S)
+    pub fn bit<S: Copy>(&mut self, bus: &Peripherals, bit: usize, src: S)
     where
         Self: IO8<S>,
     {
-        if let Some(v) = self.read8(bus, src) {
+        if let Some(mut v) = self.read8(bus, src) {
+            v &= 1 << bit;
             self.regs.set_zf(v == 0);
             self.regs.set_nf(false);
             self.regs.set_hf(true);
@@ -240,7 +242,7 @@ impl Cpu {
                 return None;
             },
             1: {
-                let hi = VAL8.load(Relaxed);
+                let hi = bus.read(self.regs.sp);
                 self.regs.sp = self.regs.sp.wrapping_add(1);
                 VAL16.store(u16::from_le_bytes([VAL8.load(Relaxed), hi]), Relaxed);
                 go!(2);
@@ -316,7 +318,7 @@ impl Cpu {
         step!((), {
             0: if let Some(v) = self.pop16(bus) {
                 self.regs.pc = v;
-                go!(1);
+                return go!(1);
             },
             1: {
                 go!(0);

@@ -1,9 +1,11 @@
 use std::{env, fs::File, io::Read, process::exit};
 
 use bootrom::Bootrom;
+use cartridge::Cartridge;
 use gameboy::GameBoy;
 
 mod bootrom;
+mod cartridge;
 mod cpu;
 mod decode;
 mod fetch;
@@ -11,6 +13,7 @@ mod gameboy;
 mod hram;
 mod instructions;
 mod lcd;
+mod mbc;
 mod operands;
 mod peripherals;
 mod ppu;
@@ -39,7 +42,9 @@ fn main() {
     }
 
     let bootrom_raw = file2vec(&args[1]);
+    let cartridge_raw = file2vec(&args[2]);
     let bootrom = Bootrom::new(bootrom_raw.into());
-    let mut gameboy = GameBoy::new(bootrom);
+    let cartridge = Cartridge::new(cartridge_raw.into());
+    let mut gameboy = GameBoy::new(bootrom, cartridge);
     gameboy.run();
 }

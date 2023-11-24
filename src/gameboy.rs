@@ -1,8 +1,8 @@
-use std::{sync::mpsc::Receiver, time};
+use std::time;
 
 use sdl2::{self, event::Event, Sdl};
 
-use crate::{bootrom::Bootrom, cpu::Cpu, lcd::LCD, peripherals::Peripherals};
+use crate::{bootrom::Bootrom, cartridge::Cartridge, cpu::Cpu, lcd::LCD, peripherals::Peripherals};
 
 const CPU_CLOCK_HZ: u128 = 4_194_304;
 const M_CYCLE_CLOCK: u128 = 4;
@@ -16,10 +16,10 @@ pub struct GameBoy {
 }
 
 impl GameBoy {
-    pub fn new(bootrom: Bootrom) -> Self {
+    pub fn new(bootrom: Bootrom, cartridge: Cartridge) -> Self {
         let sdl = sdl2::init().expect("failed to initialize SDL");
         let lcd = LCD::new(&sdl, 4);
-        let peripherals = Peripherals::new(bootrom);
+        let peripherals = Peripherals::new(bootrom, cartridge);
         let cpu = Cpu::new();
         Self {
             cpu,

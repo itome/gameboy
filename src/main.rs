@@ -12,6 +12,7 @@ mod fetch;
 mod gameboy;
 mod hram;
 mod instructions;
+mod interrupts;
 mod lcd;
 mod mbc;
 mod operands;

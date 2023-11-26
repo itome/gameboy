@@ -19,6 +19,7 @@ mod operands;
 mod peripherals;
 mod ppu;
 mod registers;
+mod timer;
 mod wram;
 
 pub const LCD_WIDTH: usize = 160;

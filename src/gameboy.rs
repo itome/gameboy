@@ -43,6 +43,9 @@ impl GameBoy {
             let e = time.elapsed().as_nanos();
             for _ in 0..(e - elapsed) / M_CYCLE_NANOS {
                 self.cpu.emulate_cycle(&mut self.peripherals);
+                self.peripherals
+                    .timer
+                    .emulate_cycle(&mut self.cpu.interrupts);
                 if self.peripherals.ppu.emulate_cycle() {
                     self.lcd.draw(self.peripherals.ppu.pixel_buffer());
                 }

@@ -6,9 +6,9 @@ impl Cpu {
         if self.interrupts.ime && self.interrupts.get_interrupt() > 0 {
             self.ctx.int = true;
         } else {
+            self.regs.pc = self.regs.pc.wrapping_add(1);
             self.ctx.int = false;
         }
-        self.regs.pc = self.regs.pc.wrapping_add(1);
         self.ctx.cb = false;
     }
 }

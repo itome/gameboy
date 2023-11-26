@@ -46,7 +46,7 @@ impl Peripherals {
         }
     }
 
-    pub fn write(&mut self, interrupts: &Interrupts, addr: u16, val: u8) {
+    pub fn write(&mut self, interrupts: &mut Interrupts, addr: u16, val: u8) {
         match addr {
             0x0000..=0x00FF => {
                 if !self.bootrom.is_active() {

@@ -4,35 +4,35 @@ pub const TIMER: u8 = 1 << 2;
 pub const SERIAL: u8 = 1 << 3;
 pub const JOYPAD: u8 = 1 << 4;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Interrupts {
     pub ime: bool,
-    pub int_flags: u8,
-    pub int_enable: u8,
+    pub intr_flags: u8,
+    pub intr_enable: u8,
 }
 
 impl Interrupts {
+    pub fn get_interrupt(&self) -> u8 {
+        self.intr_flags & self.intr_enable & 0b11111
+    }
+
+    pub fn irq(&mut self, val: u8) {
+        self.intr_flags |= val;
+    }
+
     pub fn read(&self, addr: u16) -> u8 {
         match addr {
-            0xFF0F => self.int_flags,
-            0xFFFF => self.int_enable,
+            0xFF0F => self.intr_flags,
+            0xFFFF => self.intr_enable,
             _ => unreachable!(),
         }
     }
 
     pub fn write(&mut self, addr: u16, val: u8) {
         match addr {
-            0xFF0F => self.int_flags = val,
-            0xFFFF => self.int_enable = val,
+            0xFF0F => self.intr_flags = val,
+            0xFFFF => self.intr_enable = val,
             _ => unreachable!(),
         }
-    }
-
-    pub fn irq(&mut self, val: u8) {
-        self.int_flags |= val;
-    }
-
-    pub fn get_interrupts(&self) -> u8 {
-        self.int_flags & self.int_enable & 0xb11111
     }
 }

@@ -202,14 +202,14 @@ impl Cpu {
             1: {
                 let [lo, hi] = u16::to_le_bytes(val);
                 self.regs.sp = self.regs.sp.wrapping_sub(1);
-                bus.write(self.regs.sp, hi);
+                bus.write(&mut self.interrupts, self.regs.sp, hi);
                 VAL8.store(lo, Relaxed);
                 go!(2);
                 return None;
             },
             2: {
                 self.regs.sp = self.regs.sp.wrapping_sub(1);
-                bus.write(self.regs.sp, VAL8.load(Relaxed));
+                bus.write(&mut self.interrupts, self.regs.sp, VAL8.load(Relaxed));
                 go!(3);
                 return None;
             },
@@ -236,13 +236,13 @@ impl Cpu {
     pub fn pop16(&mut self, bus: &Peripherals) -> Option<u16> {
         step!(None, {
             0: {
-                VAL8.store(bus.read(self.regs.sp), Relaxed);
+                VAL8.store(bus.read(&self.interrupts, self.regs.sp), Relaxed);
                 self.regs.sp = self.regs.sp.wrapping_add(1);
                 go!(1);
                 return None;
             },
             1: {
-                let hi = bus.read(self.regs.sp);
+                let hi = bus.read(&self.interrupts, self.regs.sp);
                 self.regs.sp = self.regs.sp.wrapping_add(1);
                 VAL16.store(u16::from_le_bytes([VAL8.load(Relaxed), hi]), Relaxed);
                 go!(2);
@@ -353,13 +353,13 @@ impl Cpu {
 
     pub fn halt(&mut self, bus: &Peripherals) {
         step!((), {
-            0: if self.interrupts.get_interrupts() > 0 {
+            0: if self.interrupts.get_interrupt() > 0 {
                 self.fetch(bus);
             } else {
                 return go!(1);
             },
             1: {
-                if self.interrupts.get_interrupts() > 0 {
+                if self.interrupts.get_interrupt() > 0 {
                     go!(0);
                     self.fetch(bus);
                 }

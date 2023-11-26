@@ -53,7 +53,7 @@ impl Cpu {
             1: {
                 self.interrupts.ime = false;
                 go!(0);
-                self.fetch(bus);
+                self.fetch(bus)
             },
         });
     }

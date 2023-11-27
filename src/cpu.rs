@@ -37,7 +37,7 @@ impl Cpu {
 
     fn call_isr(&mut self, bus: &mut Peripherals) {
         step!((), {
-            0: if let Some(v) = self.push16(bus, self.regs.pc) {
+            0: if let Some(_) = self.push16(bus, self.regs.pc) {
                 let highest_int: u8 = 1 << self.interrupts.get_interrupt().trailing_zeros();
                 self.interrupts.intr_flags &= !highest_int;
                 self.regs.pc = match highest_int {

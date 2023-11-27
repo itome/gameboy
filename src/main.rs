@@ -13,6 +13,7 @@ mod gameboy;
 mod hram;
 mod instructions;
 mod interrupts;
+mod joypad;
 mod lcd;
 mod mbc;
 mod operands;

@@ -1,6 +1,9 @@
 use std::iter;
 
-use crate::{LCD_PIXELS, LCD_WIDTH};
+use crate::{
+    interrupts::{self, Interrupts},
+    LCD_PIXELS, LCD_WIDTH,
+};
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum Mode {
@@ -25,6 +28,11 @@ const VBLANK_INT: u8 = 1 << 4;
 const HBLANK_INT: u8 = 1 << 3;
 const LYC_EQ_LY: u8 = 1 << 2;
 
+const OBJ2BG_PRIORITY: u8 = 1 << 7;
+const Y_FLIP: u8 = 1 << 6;
+const X_FLIP: u8 = 1 << 5;
+const PALETTE: u8 = 1 << 4;
+
 #[derive(Debug)]
 pub struct Ppu {
     mode: Mode,
@@ -39,10 +47,12 @@ pub struct Ppu {
     obp1: u8,
     wy: u8,
     wx: u8,
+    wly: u8,
     vram: Box<[u8; 0x2000]>,
     oam: Box<[u8; 0xA0]>,
     cycles: u8,
     buffer: Box<[u8; LCD_PIXELS]>,
+    pub oam_dma: Option<u16>,
 }
 
 impl Ppu {
@@ -58,12 +68,14 @@ impl Ppu {
             bgp: 0,
             obp0: 0,
             obp1: 0,
+            wly: 0,
             wy: 0,
             wx: 0,
             vram: Box::new([0; 0x2000]),
             oam: Box::new([0; 0xA0]),
             cycles: 20,
             buffer: Box::new([0; LCD_PIXELS]),
+            oam_dma: None,
         }
     }
 
@@ -80,7 +92,11 @@ impl Ppu {
                 if self.mode == Mode::Drawing || self.mode == Mode::OamScan {
                     0xFF
                 } else {
-                    self.oam[addr as usize & 0xFF]
+                    if self.oam_dma.is_some() {
+                        0xFF
+                    } else {
+                        self.oam[addr as usize & 0xFF]
+                    }
                 }
             }
             0xFF40 => self.lcdc,
@@ -107,7 +123,9 @@ impl Ppu {
             }
             0xFE00..=0xFE9F => {
                 if self.mode != Mode::Drawing && self.mode != Mode::OamScan {
-                    self.oam[addr as usize & 0xFF] = val;
+                    if self.oam_dma.is_none() {
+                        self.oam[addr as usize & 0xFF] = val;
+                    }
                 }
             }
             0xFF40 => self.lcdc = val,
@@ -116,6 +134,7 @@ impl Ppu {
             0xFF43 => self.scx = val,
             0xFF44 => {}
             0xFF45 => self.lyc = val,
+            0xFF46 => self.oam_dma = Some((val as u16) << 8),
             0xFF47 => self.bgp = val,
             0xFF48 => self.obp0 = val,
             0xFF49 => self.obp1 = val,
@@ -125,7 +144,7 @@ impl Ppu {
         }
     }
 
-    pub fn emulate_cycle(&mut self) -> bool {
+    pub fn emulate_cycle(&mut self, interrupts: &mut Interrupts) -> bool {
         if self.lcdc & PPU_ENABLE == 0 {
             return false;
         }
@@ -142,36 +161,63 @@ impl Ppu {
                 if self.ly < 144 {
                     self.mode = Mode::OamScan;
                     self.cycles = 20;
+                    if self.stat & OAM_SCAN_INT > 0 {
+                        interrupts.irq(interrupts::STAT);
+                    }
                 } else {
                     self.mode = Mode::VBlank;
                     self.cycles = 114;
+                    interrupts.irq(interrupts::VBLANK);
+                    if self.stat & VBLANK_INT > 0 {
+                        interrupts.irq(interrupts::STAT);
+                    }
                 }
-                self.check_lyc_eq_ly();
+                self.check_lyc_eq_ly(interrupts);
             }
             Mode::VBlank => {
                 self.ly += 1;
                 if self.ly > 153 {
                     ret = true;
                     self.ly = 0;
+                    self.wly = 0;
                     self.mode = Mode::OamScan;
                     self.cycles = 20;
+                    if self.stat & OAM_SCAN_INT > 0 {
+                        interrupts.irq(interrupts::STAT);
+                    }
                 } else {
                     self.cycles = 114;
                 }
-                self.check_lyc_eq_ly();
+                self.check_lyc_eq_ly(interrupts);
             }
             Mode::OamScan => {
                 self.mode = Mode::Drawing;
                 self.cycles = 43;
             }
             Mode::Drawing => {
-                self.render_bg();
+                let mut bg_prio: [bool; 160] = [false; LCD_WIDTH];
+                self.render_bg(&mut bg_prio);
+                self.render_window(&mut bg_prio);
+                self.render_sprite(&mut bg_prio);
                 self.mode = Mode::HBlank;
                 self.cycles = 51;
+                if self.stat & HBLANK_INT > 0 {
+                    interrupts.irq(interrupts::STAT);
+                }
             }
         }
         ret
     }
+
+    pub fn oam_dma_emulate_cycle(&mut self, val: u8) {
+        if let Some(addr) = self.oam_dma {
+            if self.mode != Mode::Drawing && self.mode != Mode::OamScan {
+                self.oam[addr as usize & 0xFF] = val;
+            }
+            self.oam_dma = Some(addr.wrapping_add(1)).filter(|&x| (x as u8) < 0xA0);
+        }
+    }
+
     pub fn pixel_buffer(&self) -> Box<[u8]> {
         self.buffer
             .iter()
@@ -198,7 +244,7 @@ impl Ppu {
         }
     }
 
-    fn render_bg(&mut self) {
+    fn render_bg(&mut self, bg_prio: &mut [bool; LCD_WIDTH]) {
         if self.lcdc & BG_WINDOW_ENABLE == 0 {
             return;
         }
@@ -210,6 +256,7 @@ impl Ppu {
                 self.get_tile_idx_from_tile_map(self.lcdc & BG_TILE_MAP > 0, y >> 3, x >> 3);
 
             let pixel = self.get_pixel_from_tile(tile_idx, y & 7, x & 7);
+            bg_prio[i] = pixel != 0;
 
             self.buffer[LCD_WIDTH * self.ly as usize + i] = match (self.bgp >> (pixel << 1)) & 0b11
             {
@@ -221,11 +268,121 @@ impl Ppu {
         }
     }
 
-    fn check_lyc_eq_ly(&mut self) {
+    fn render_window(&mut self, bg_prio: &mut [bool; LCD_WIDTH]) {
+        if self.lcdc & BG_WINDOW_ENABLE == 0 || self.lcdc & WINDOW_ENABLE == 0 || self.wy > self.ly
+        {
+            return;
+        }
+
+        let mut wly_add = 0;
+        let y = self.wly;
+
+        for i in 0..LCD_WIDTH {
+            let (x, overflow) = (i as u8).overflowing_sub(self.wx.wrapping_sub(7));
+            if overflow {
+                continue;
+            }
+            wly_add = 1;
+
+            let title_idx =
+                self.get_tile_idx_from_tile_map(self.lcdc & WINDOW_TILE_MAP > 0, y >> 3, x >> 3);
+            let pixel = self.get_pixel_from_tile(title_idx, y & 7, x & 7);
+
+            bg_prio[i] = pixel != 0;
+
+            self.buffer[LCD_WIDTH * self.ly as usize + i] = match (self.bgp >> (pixel << 1)) & 0b11
+            {
+                0b00 => 0xFF,
+                0b01 => 0xAA,
+                0b10 => 0x55,
+                _ => 0x00,
+            }
+        }
+        self.wly += wly_add;
+    }
+
+    fn render_sprite(&mut self, bg_prio: &[bool; LCD_WIDTH]) {
+        if self.lcdc & SPRITE_ENABLE == 0 {
+            return;
+        }
+        let size = if self.lcdc & SPRITE_SIZE > 0 { 16 } else { 8 };
+
+        let mut sprites: Vec<Sprite> =
+            unsafe { std::mem::transmute::<[u8; 0xA0], [Sprite; 40]>(self.oam.as_ref().clone()) }
+                .into_iter()
+                .filter_map(|mut sprite| {
+                    sprite.y = sprite.y.wrapping_sub(16); // 16を引いた値がこのspriteの上端の場所
+                    sprite.x = sprite.x.wrapping_sub(8); // 8を引いた値がこのspriteの左端の場所
+                    if self.ly.wrapping_sub(sprite.y) < size {
+                        Some(sprite) // OAMを検索しレンダリングする必要のあるspriteをspriteバッファに保存
+                    } else {
+                        None
+                    }
+                })
+                .take(10)
+                .collect(); // 1行に表示されるspriteは最大で10個
+        sprites.reverse(); // OAM上でより低いアドレスにあるspriteを上にレンダリング
+        sprites.sort_by(|&a, &b| b.x.cmp(&a.x)); // より左にあるspriteを上にレンダリング
+
+        for sprite in sprites {
+            let palette = if sprite.flags & PALETTE > 0 {
+                self.obp1
+            } else {
+                self.obp0
+            };
+            let mut tile_idx = sprite.tile_idx as usize;
+            let mut row = if sprite.flags & Y_FLIP > 0 {
+                size - 1 - self.ly.wrapping_sub(sprite.y)
+            } else {
+                self.ly.wrapping_sub(sprite.y)
+            };
+
+            if size == 16 {
+                tile_idx &= 0xFE; // 2つのタイルは偶数インデックスから続く2タイルである必要がある
+            }
+            tile_idx += (row >= 8) as usize; // 下側のタイルは指定されたタイルインデックスの次の›
+            row &= 7;
+
+            for col in 0..8 {
+                let col_flipped = if sprite.flags & X_FLIP > 0 {
+                    7 - col
+                } else {
+                    col
+                };
+                let pixel = self.get_pixel_from_tile(tile_idx, row, col_flipped);
+                let i = sprite.x.wrapping_add(col) as usize;
+                if i < LCD_WIDTH && pixel > 0 {
+                    if sprite.flags & OBJ2BG_PRIORITY == 0 || !bg_prio[i] {
+                        self.buffer[LCD_WIDTH * self.ly as usize + i] =
+                            match (palette >> (pixel << 1)) & 0b11 {
+                                0b00 => 0xFF, // 白
+                                0b01 => 0xAA, // ライトグレー
+                                0b10 => 0x55, // ダークグレー
+                                _ => 0x00,    // 黒
+                            };
+                    }
+                }
+            }
+        }
+    }
+
+    fn check_lyc_eq_ly(&mut self, interrupts: &mut Interrupts) {
         if self.ly == self.lyc {
             self.stat |= LYC_EQ_LY;
+            if self.stat & LYC_EQ_LY_INT > 0 {
+                interrupts.irq(interrupts::STAT);
+            }
         } else {
             self.stat &= !LYC_EQ_LY;
         }
     }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Sprite {
+    y: u8,
+    x: u8,
+    tile_idx: u8,
+    flags: u8,
 }

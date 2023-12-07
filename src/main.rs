@@ -4,6 +4,8 @@ use bootrom::Bootrom;
 use cartridge::Cartridge;
 use gameboy::GameBoy;
 
+mod apu;
+mod audio;
 mod bootrom;
 mod cartridge;
 mod cpu;

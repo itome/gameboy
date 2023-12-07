@@ -1,9 +1,9 @@
-use std::time;
+use std::{rc::Rc, time};
 
 use sdl2::{self, event::Event, keyboard::Keycode, Sdl};
 
 use crate::{
-    bootrom::Bootrom, cartridge::Cartridge, cpu::Cpu, joypad::Button, lcd::LCD,
+    audio::Audio, bootrom::Bootrom, cartridge::Cartridge, cpu::Cpu, joypad::Button, lcd::LCD,
     peripherals::Peripherals,
 };
 
@@ -22,7 +22,9 @@ impl GameBoy {
     pub fn new(bootrom: Bootrom, cartridge: Cartridge) -> Self {
         let sdl = sdl2::init().expect("failed to initialize SDL");
         let lcd = LCD::new(&sdl, 4);
-        let peripherals = Peripherals::new(bootrom, cartridge);
+        let mut peripherals = Peripherals::new(bootrom, cartridge);
+        let audio = Audio::new(&sdl);
+        peripherals.apu.set_callback(Rc::new(audio.0));
         let cpu = Cpu::new();
         Self {
             cpu,
@@ -66,6 +68,7 @@ impl GameBoy {
                 self.peripherals
                     .timer
                     .emulate_cycle(&mut self.cpu.interrupts);
+                self.peripherals.apu.emulate_cycle();
                 if let Some(addr) = self.peripherals.ppu.oam_dma {
                     self.peripherals
                         .ppu
